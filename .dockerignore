@@ -1,0 +1,8 @@
+/target
+/models
+/local_storage
+/web
+/.git
+.env
+__pycache__/
+.pytest_cache/

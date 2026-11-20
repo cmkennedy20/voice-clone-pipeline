@@ -1,0 +1,22 @@
+[package]
+name = "api-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[features]
+default = []
+cuda = ["framework/cuda"]
+
+[dependencies]
+api.workspace = true
+common.workspace = true
+domain.workspace = true
+features.workspace = true
+framework.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true

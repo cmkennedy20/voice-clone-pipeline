@@ -1,0 +1,39 @@
+# NVIDIA CUDA GPU overlay for Docker Desktop on Windows (WSL2 backend) and Linux.
+# Automatically attached by `make` / `.\make.ps1` when `COMPUTE_MODE=gpu` (default).
+# For CPU-only machines (no NVIDIA GPU), set `COMPUTE_MODE=cpu` in `.env`.
+services:
+  qwen-translator:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["${NVIDIA_GPU_ID:-0}"]
+              capabilities: [gpu]
+
+  tts-clone-sidecar:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["${NVIDIA_GPU_ID:-0}"]
+              capabilities: [gpu]
+
+  api-server:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["${NVIDIA_GPU_ID:-0}"]
+              capabilities: [gpu]
+
+  cli:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["${NVIDIA_GPU_ID:-0}"]
+              capabilities: [gpu]

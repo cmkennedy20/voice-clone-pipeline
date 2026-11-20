@@ -1,0 +1,343 @@
+services:
+  model-puller:
+    image: python:3.12-slim
+    environment:
+      HF_TOKEN: ${HF_TOKEN:-}
+      WHISPER_HF_REPO: ${WHISPER_HF_REPO:-ggerganov/whisper.cpp}
+      WHISPER_MODEL_FILE: ${WHISPER_MODEL_FILE:-ggml-large-v3.bin}
+      LLM_HF_REPO: ${LLM_HF_REPO:-Qwen/Qwen3-8B-GGUF}
+      LLM_MODEL_FILE: ${LLM_MODEL_FILE:-Qwen3-8B-Q8_0.gguf}
+      COSYVOICE_HF_REPO: ${COSYVOICE_HF_REPO:-FunAudioLLM/CosyVoice2-0.5B}
+      PULL_COSYVOICE: ${PULL_COSYVOICE:-true}
+    command:
+      - bash
+      - -euo
+      - pipefail
+      - -c
+      - |
+        pip install --no-cache-dir -q huggingface_hub &&
+        python3 - << 'PY'
+        import os
+        import shutil
+        from pathlib import Path
+        from huggingface_hub import hf_hub_download, snapshot_download
+
+        Path("/models/whisper").mkdir(parents=True, exist_ok=True)
+        Path("/models/vad").mkdir(parents=True, exist_ok=True)
+        Path("/models/llm").mkdir(parents=True, exist_ok=True)
+        Path("/models/tts/xtts-v2").mkdir(parents=True, exist_ok=True)
+        Path("/models/tts/cosyvoice").mkdir(parents=True, exist_ok=True)
+
+        whisper_repo = os.environ.get("WHISPER_HF_REPO", "ggerganov/whisper.cpp")
+        whisper_file = os.environ.get("WHISPER_MODEL_FILE", "ggml-large-v3.bin")
+        print(f"[model-puller] Ensuring Whisper model {whisper_repo}/{whisper_file} ...")
+        hf_hub_download(
+            repo_id=whisper_repo,
+            filename=whisper_file,
+            local_dir="/models/whisper",
+        )
+
+        vad_dest = Path("/models/vad/silero_vad.onnx")
+        if not vad_dest.exists():
+            for repo_id, filename in [
+                ("onnx-community/silero-vad", "onnx/model.onnx"),
+                ("snakers4/silero-vad", "src/silero_vad/data/silero_vad.onnx"),
+            ]:
+                try:
+                    downloaded = hf_hub_download(
+                        repo_id=repo_id,
+                        filename=filename,
+                        local_dir="/models/vad/_cache",
+                    )
+                    shutil.copyfile(downloaded, vad_dest)
+                    break
+                except Exception as exc:
+                    print(f"VAD fallback note ({repo_id}): {exc}")
+
+        llm_repo = os.environ.get("LLM_HF_REPO", "Qwen/Qwen3-8B-GGUF")
+        llm_file = os.environ.get("LLM_MODEL_FILE", "Qwen3-8B-Q8_0.gguf")
+        print(f"[model-puller] Ensuring Qwen LLM {llm_repo}/{llm_file} ...")
+        hf_hub_download(
+            repo_id=llm_repo,
+            filename=llm_file,
+            local_dir="/models/llm",
+        )
+
+        print("[model-puller] Ensuring XTTS-v2 weights ...")
+        snapshot_download(
+            repo_id="coqui/XTTS-v2",
+            local_dir="/models/tts/xtts-v2",
+        )
+
+        pull_cosyvoice = os.environ.get("PULL_COSYVOICE", "true").strip().lower() in ("1", "true", "yes", "on")
+        if pull_cosyvoice:
+            cosyvoice_repo = os.environ.get("COSYVOICE_HF_REPO", "FunAudioLLM/CosyVoice2-0.5B")
+            print(f"[model-puller] Ensuring CosyVoice weights ({cosyvoice_repo}) ...")
+            snapshot_download(
+                repo_id=cosyvoice_repo,
+                local_dir="/models/tts/cosyvoice",
+            )
+        else:
+            print("[model-puller] Skipping CosyVoice download (PULL_COSYVOICE=false).")
+        PY
+    volumes:
+      - ${STUDIO_MODELS_DIR:-./models}:/models
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: voice_pipe
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local_voice_dev}
+      POSTGRES_DB: voice_pipe
+    volumes:
+      - pg_voice_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U voice_pipe -d voice_pipe"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  db-migrate:
+    build:
+      context: .
+      target: db-migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://voice_pipe:${POSTGRES_PASSWORD:-local_voice_dev}@postgres:5432/voice_pipe
+
+  qwen-translator:
+    build:
+      context: ./sidecars/llama-cuda122
+      args:
+        COMPUTE_BACKEND: ${COMPUTE_BACKEND:-cuda}
+        CUDA_ARCHITECTURES: ${CUDA_ARCHITECTURES:-75;80;86;89}
+    restart: unless-stopped
+    depends_on:
+      model-puller:
+        condition: service_completed_successfully
+    command:
+      - "-m"
+      - "/models/${LLM_MODEL_FILE:-Qwen3-8B-Q8_0.gguf}"
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8081"
+      - "-ngl"
+      - "${LLM_GPU_LAYERS:-99}"
+      - "-t"
+      - "${LLM_CPU_THREADS:-4}"
+      - "-c"
+      - "${LLM_CTX_SIZE:-4096}"
+      - "--parallel"
+      - "1"
+      - "--reasoning-budget"
+      - "0"
+    volumes:
+      - ${STUDIO_MODELS_DIR:-./models}/llm:/models:ro
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8081/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 60s
+
+  tts-clone-sidecar:
+    build:
+      context: ./sidecars/tts-worker
+      args:
+        INSTALL_EXTRA_TTS_PACKAGES: ${INSTALL_EXTRA_TTS_PACKAGES:-true}
+        TORCH_COMPUTE: ${TORCH_COMPUTE:-cu121}
+    restart: unless-stopped
+    depends_on:
+      model-puller:
+        condition: service_completed_successfully
+    environment:
+      CUDA_VISIBLE_DEVICES: "${TTS_CUDA_VISIBLE_DEVICES:-0}"
+      PREWARM_ENGINES: "${PREWARM_ENGINES:-cosyvoice_3,xtts_v2}"
+      MODELS_DIR: /models
+      STORAGE_DIR: /storage
+    volumes:
+      - ${STUDIO_MODELS_DIR:-./models}/tts:/models:ro
+      - ${STUDIO_STORAGE_DIR:-./local_storage}:/storage
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8082/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 90s
+
+  api-server:
+    build:
+      context: .
+      target: gpu-runtime
+      args:
+        COMPUTE_BACKEND: ${COMPUTE_BACKEND:-cuda}
+        CUDA_ARCHITECTURES: ${CUDA_ARCHITECTURES:-75;80;86;89}
+    entrypoint: ["/usr/local/bin/api-server"]
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:${API_BIND_PORT:-8080}:8080"
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+      qwen-translator:
+        condition: service_healthy
+      tts-clone-sidecar:
+        condition: service_healthy
+    environment:
+      API_BIND_ADDR: 0.0.0.0:8080
+      DATABASE_URL: postgres://voice_pipe:${POSTGRES_PASSWORD:-local_voice_dev}@postgres:5432/voice_pipe
+      OWNER_API_BEARER_TOKEN: ${OWNER_API_BEARER_TOKEN:-dev-owner-bearer-token-change-me}
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-dev-discord-bot-token-change-me}
+      DISCORD_APPLICATION_ID: ${DISCORD_APPLICATION_ID:-100000000000000000}
+      DISCORD_OWNER_USER_ID: ${DISCORD_OWNER_USER_ID:-100000000000000001}
+      WHISPER_MODEL_PATH: /models/whisper/${WHISPER_MODEL_FILE:-ggml-large-v3.bin}
+      WHISPER_USE_GPU: "${WHISPER_USE_GPU:-true}"
+      SILERO_VAD_MODEL_PATH: /models/vad/silero_vad.onnx
+      TRANSLATOR_BASE_URL: http://qwen-translator:8081
+      TTS_SIDECAR_URL: http://tts-clone-sidecar:8082
+      STORAGE_DIR: /storage
+      STUDIO_ENV_PATH: /storage/studio.env
+      AUTO_MIGRATE: "true"
+      MAX_CER_BPS: ${MAX_CER_BPS:-1200}
+      MAX_TTS_ATTEMPTS: ${MAX_TTS_ATTEMPTS:-3}
+      RUST_LOG: ${RUST_LOG:-info,api=debug,features=debug,framework=info}
+    volumes:
+      - ${STUDIO_MODELS_DIR:-./models}/whisper:/models/whisper:ro
+      - ${STUDIO_MODELS_DIR:-./models}/vad:/models/vad:ro
+      - ${STUDIO_STORAGE_DIR:-./local_storage}:/storage
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 30s
+
+  discord-worker:
+    build:
+      context: .
+      target: discord-worker
+      args:
+        COMPUTE_BACKEND: ${COMPUTE_BACKEND:-cuda}
+        CUDA_ARCHITECTURES: ${CUDA_ARCHITECTURES:-75;80;86;89}
+    restart: unless-stopped
+    depends_on:
+      api-server:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://voice_pipe:${POSTGRES_PASSWORD:-local_voice_dev}@postgres:5432/voice_pipe
+      API_SERVER_INTERNAL_URL: http://api-server:8080
+      OWNER_API_BEARER_TOKEN: ${OWNER_API_BEARER_TOKEN:-dev-owner-bearer-token-change-me}
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-dev-discord-bot-token-change-me}
+      DISCORD_APPLICATION_ID: ${DISCORD_APPLICATION_ID:-100000000000000000}
+      DISCORD_OWNER_USER_ID: ${DISCORD_OWNER_USER_ID:-100000000000000001}
+      STUDIO_ENV_PATH: /storage/studio.env
+      RUST_LOG: ${RUST_LOG:-info,discord_worker=debug}
+    volumes:
+      - ${STUDIO_STORAGE_DIR:-./local_storage}:/storage:ro
+
+  web-ui:
+    build:
+      context: ./web
+      target: runtime
+    restart: unless-stopped
+    environment:
+      LAN_HOST_IP: ${LAN_HOST_IP:-127.0.0.1}
+      OWNER_API_BEARER_TOKEN: ${OWNER_API_BEARER_TOKEN:-dev-owner-bearer-token-change-me}
+    ports:
+      - "0.0.0.0:${WEB_UI_PORT:-3000}:80"
+      - "0.0.0.0:${WEB_UI_TLS_PORT:-3443}:443"
+    volumes:
+      - web_tls_certs:/etc/nginx/certs
+    depends_on:
+      api-server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:80/"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  postgres-test:
+    image: postgres:16-alpine
+    profiles: ["verify"]
+    tmpfs:
+      - /var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: test_user
+      POSTGRES_PASSWORD: test_password
+      POSTGRES_DB: voice_pipe_test
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test_user -d voice_pipe_test"]
+      interval: 2s
+      timeout: 2s
+      retries: 5
+
+  verify-runner:
+    build:
+      context: .
+      target: verify-runner
+    profiles: ["verify"]
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://test_user:test_password@postgres-test:5432/voice_pipe_test
+    volumes:
+      - cargo_verify_cache:/app/target
+
+  tts-sidecar-test:
+    build:
+      context: ./sidecars/tts-worker
+      args:
+        INSTALL_EXTRA_TTS_PACKAGES: "false"
+    profiles: ["verify"]
+    command: ["pytest", "-v"]
+
+  web-ui-test:
+    build:
+      context: ./web
+      target: verify
+    profiles: ["verify"]
+    command: ["sh", "-c", "npm run typecheck && npm test && npm run build"]
+
+  cli:
+    build:
+      context: .
+      target: gpu-runtime
+      args:
+        COMPUTE_BACKEND: ${COMPUTE_BACKEND:-cuda}
+        CUDA_ARCHITECTURES: ${CUDA_ARCHITECTURES:-75;80;86;89}
+    entrypoint: ["/usr/local/bin/cli"]
+    profiles: ["cli"]
+    depends_on:
+      api-server:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://voice_pipe:${POSTGRES_PASSWORD:-local_voice_dev}@postgres:5432/voice_pipe
+      API_SERVER_INTERNAL_URL: http://api-server:8080
+      OWNER_API_BEARER_TOKEN: ${OWNER_API_BEARER_TOKEN:-dev-owner-bearer-token-change-me}
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-dev-discord-bot-token-change-me}
+      DISCORD_APPLICATION_ID: ${DISCORD_APPLICATION_ID:-100000000000000000}
+      DISCORD_OWNER_USER_ID: ${DISCORD_OWNER_USER_ID:-100000000000000001}
+      WHISPER_MODEL_PATH: /models/whisper/${WHISPER_MODEL_FILE:-ggml-large-v3.bin}
+      WHISPER_USE_GPU: "${WHISPER_USE_GPU:-true}"
+      SILERO_VAD_MODEL_PATH: /models/vad/silero_vad.onnx
+      TRANSLATOR_BASE_URL: http://qwen-translator:8081
+      TTS_SIDECAR_URL: http://tts-clone-sidecar:8082
+      STORAGE_DIR: /storage
+      STUDIO_ENV_PATH: /storage/studio.env
+      RUST_LOG: ${RUST_LOG:-info,cli=debug}
+    volumes:
+      - ${STUDIO_MODELS_DIR:-./models}/whisper:/models/whisper:ro
+      - ${STUDIO_MODELS_DIR:-./models}/vad:/models/vad:ro
+      - ${STUDIO_STORAGE_DIR:-./local_storage}:/storage
+      - ./evals:/evals:ro
+
+volumes:
+  pg_voice_data:
+  cargo_verify_cache:
+  web_tls_certs:

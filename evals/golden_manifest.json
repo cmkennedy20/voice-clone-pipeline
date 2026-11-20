@@ -1,0 +1,165 @@
+{
+  "manifest_version": "1.0.0",
+  "description": "RTX 3090 Layer-7 release evaluation suite: 15 golden English-to-Mandarin utterances, 3 Gate-0 DSP traps, and M1-M6 BasisPoints thresholds.",
+  "thresholds": {
+    "gate0_accuracy_bps": 10000,
+    "digit_hygiene_bps": 10000,
+    "max_mean_cer_bps": 1000,
+    "max_clip_cer_bps": 1200,
+    "min_speaker_sim_bps": 7800,
+    "format_compliance_bps": 10000,
+    "max_p95_latency_ms": 5000,
+    "max_peak_vram_mib": 22016
+  },
+  "gate0_traps": [
+    {
+      "id": "trap_01_silent_too_short",
+      "trap_kind": "silent_too_short",
+      "description": "Sub-400ms near-silent mic tap that must be rejected before acquiring the GPU semaphore.",
+      "total_duration_ms": 260,
+      "voiced_duration_ms": 180,
+      "clipped_samples_bps": 0,
+      "expected_rejection_category": "silent_too_short"
+    },
+    {
+      "id": "trap_02_heavily_clipped",
+      "trap_kind": "heavily_clipped",
+      "description": "Overdriven input exceeding the 50 bps (0.50%) full-scale clipping ceiling.",
+      "total_duration_ms": 3000,
+      "voiced_duration_ms": 2800,
+      "clipped_samples_bps": 185,
+      "expected_rejection_category": "heavily_clipped"
+    },
+    {
+      "id": "trap_03_runaway_duration",
+      "trap_kind": "runaway_duration",
+      "description": "Open-mic recording exceeding the 120,000 ms (2-minute) maximum clip boundary.",
+      "total_duration_ms": 126000,
+      "voiced_duration_ms": 124500,
+      "clipped_samples_bps": 0,
+      "expected_rejection_category": "runaway_duration"
+    }
+  ],
+  "utterances": [
+    {
+      "id": "utt_01",
+      "category": "tonal_trap",
+      "english_prompt": "I want to buy ten bowls of pork dumplings before going to sleep tonight.",
+      "expected_concepts_zh": ["买", "十", "水饺", "睡觉"],
+      "forbidden_substrings": ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "$", "%"],
+      "duration_target_ms": 2600
+    },
+    {
+      "id": "utt_02",
+      "category": "tonal_trap",
+      "english_prompt": "My mother rides a slow horse across the stone bridge every morning.",
+      "expected_concepts_zh": ["妈妈", "马", "桥", "早上"],
+      "forbidden_substrings": ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "$", "%"],
+      "duration_target_ms": 2500
+    },
+    {
+      "id": "utt_03",
+      "category": "tonal_trap",
+      "english_prompt": "Could you please give me five minutes to check the third watch in the small box?",
+      "expected_concepts_zh": ["五分钟", "手表", "小盒"],
+      "forbidden_substrings": ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "$", "%"],
+      "duration_target_ms": 4800
+    },
+    {
+      "id": "utt_04",
+      "category": "digits_and_currency",
+      "english_prompt": "The replacement graphics card cost $1,250 after a 15% seasonal discount.",
+      "expected_concepts_zh": ["显卡", "一千", "百分之十五"],
+      "forbidden_substrings": ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "$", "%"],
+      "duration_target_ms": 5200
+    },
+    {
+      "id": "utt_05",
+      "category": "time_and_percentage",
+      "english_prompt": "Our team deployment starts at 3:45 PM on November 18, 2026, with 99.5% readiness.",
+      "expected_concepts_zh": ["二零二六", "十一月十八", "三点四十五", "百分之九十九点五"],
+      "forbidden_substrings": ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "$", "%"],
+      "duration_target_ms": 6200
+    },
+    {
+      "id": "utt_06",
+      "category": "digits_and_currency",
+      "english_prompt": "Send me $48.50 for the 2 train tickets by 9 o'clock.",
+      "expected_concepts_zh": ["四十八", "两张", "火车票", "九点"],
+      "forbidden_substrings": ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "$", "%"],
+      "duration_target_ms": 2800
+    },
+    {
+      "id": "utt_07",
+      "category": "technical",
+      "english_prompt": "The local inference server keeps all 3 neural models inside 20 gigabytes of video memory.",
+      "expected_concepts_zh": ["推理", "三个", "二十", "显存"],
+      "forbidden_substrings": ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "$", "%"],
+      "duration_target_ms": 6000
+    },
+    {
+      "id": "utt_08",
+      "category": "technical",
+      "english_prompt": "When the character error rate exceeds 12%, the pipeline automatically shifts the synthesis seed up to 3 times before discarding the clip.",
+      "expected_concepts_zh": ["百分之十二", "三次", "合成"],
+      "forbidden_substrings": ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "$", "%"],
+      "duration_target_ms": 9800
+    },
+    {
+      "id": "utt_09",
+      "category": "technical",
+      "english_prompt": "Please verify that port 8080 only accepts authenticated requests over our private network and blocks unverified uploads.",
+      "expected_concepts_zh": ["端口", "八零八零", "认证", "网络"],
+      "forbidden_substrings": ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "$", "%"],
+      "duration_target_ms": 10400
+    },
+    {
+      "id": "utt_10",
+      "category": "conversational",
+      "english_prompt": "Hey everyone, jump into the voice channel whenever you are ready.",
+      "expected_concepts_zh": ["语音频道", "准备好"],
+      "forbidden_substrings": ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "$", "%"],
+      "duration_target_ms": 2200
+    },
+    {
+      "id": "utt_11",
+      "category": "conversational",
+      "english_prompt": "Sorry I am running about 10 minutes late, traffic near the tunnel is completely jammed.",
+      "expected_concepts_zh": ["十分钟", "堵车", "隧道"],
+      "forbidden_substrings": ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "$", "%"],
+      "duration_target_ms": 5400
+    },
+    {
+      "id": "utt_12",
+      "category": "conversational",
+      "english_prompt": "Let us grab spicy hotpot after the match tonight, my treat for all 4 of us.",
+      "expected_concepts_zh": ["火锅", "我请客", "四个人"],
+      "forbidden_substrings": ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "$", "%"],
+      "duration_target_ms": 5600
+    },
+    {
+      "id": "utt_13",
+      "category": "tonal_trap",
+      "english_prompt": "Forty-four stone lions stand silently outside the old city museum.",
+      "expected_concepts_zh": ["四十四", "石狮子", "博物馆"],
+      "forbidden_substrings": ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "$", "%"],
+      "duration_target_ms": 5000
+    },
+    {
+      "id": "utt_14",
+      "category": "conversational",
+      "english_prompt": "I recorded a clean 15-second voice sample in a quiet room so my Mandarin messages still sound just like me on mobile and desktop.",
+      "expected_concepts_zh": ["十五秒", "安静", "中文", "声音"],
+      "forbidden_substrings": ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "$", "%"],
+      "duration_target_ms": 11500
+    },
+    {
+      "id": "utt_15",
+      "category": "technical",
+      "english_prompt": "Between 2024 and 2026, end-to-end latency dropped below 4 seconds while speaker similarity stayed above 85% across every benchmark run.",
+      "expected_concepts_zh": ["二零二四", "二零二六", "四秒", "百分之八十五"],
+      "forbidden_substrings": ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "$", "%"],
+      "duration_target_ms": 12800
+    }
+  ]
+}

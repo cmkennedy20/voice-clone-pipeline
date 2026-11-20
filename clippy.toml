@@ -1,0 +1,8 @@
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true
+
+disallowed-methods = [
+    { path = "std::env::var", reason = "Read environment strictly through AppConfig in crates/framework/src/config.rs (via std::env::vars)" },
+    { path = "std::env::var_os", reason = "Read environment strictly through AppConfig in crates/framework/src/config.rs (via std::env::vars)" },
+]

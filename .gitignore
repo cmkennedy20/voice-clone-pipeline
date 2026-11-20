@@ -1,0 +1,41 @@
+# Build & bundle outputs
+/target
+/dist
+/web/node_modules
+/web/dist
+
+# Runtime model weights, enrolled voice profiles & rendered audio
+/models
+/local_storage
+*.wav
+*.ogg
+*.mp3
+*.m4a
+*.flac
+*.opus
+*.pth
+*.pt
+*.ckpt
+*.safetensors
+*.gguf
+*.onnx
+*.bin
+
+# Local environment secrets & TLS material (keep .env.example tracked)
+.env
+.env.*
+!.env.example
+studio.env
+*.pem
+*.key
+*.crt
+*.pfx
+
+# Python, editor & OS artifacts
+__pycache__/
+.pytest_cache/
+*.pyc
+.vscode/
+.idea/
+*.swp
+.DS_Store

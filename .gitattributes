@@ -1,0 +1,29 @@
+# Normalize text files and ensure Linux container scripts always retain LF line endings
+# even when cloned on Windows with core.autocrlf=true.
+* text=auto eol=lf
+
+*.sh text eol=lf
+*.py text eol=lf
+*.rs text eol=lf
+*.sql text eol=lf
+*.toml text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.conf text eol=lf
+Dockerfile* text eol=lf
+Makefile text eol=lf
+Justfile text eol=lf
+.env.example text eol=lf
+
+# Binary assets
+*.png binary
+*.jpg binary
+*.ico binary
+*.wav binary
+*.ogg binary
+*.onnx binary
+*.bin binary
+*.gguf binary
+*.pth binary

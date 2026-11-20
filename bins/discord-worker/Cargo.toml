@@ -1,0 +1,22 @@
+[package]
+name = "discord-worker"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+common.workspace = true
+domain.workspace = true
+features.workspace = true
+framework.workspace = true
+poise.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serenity.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true

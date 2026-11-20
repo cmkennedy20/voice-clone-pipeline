@@ -1,0 +1,17 @@
+[profile.default]
+retries = 0
+fail-fast = false
+slow-timeout = { period = "30s", terminate-after = 2 }
+status-level = "pass"
+final-status-level = "flaky"
+
+[[profile.default.overrides]]
+filter = "test(runs_rtx3090_benchmark_suite_on_golden_manifest_and_persists_passing_report)"
+threads-required = "num-cpus"
+
+[profile.ci]
+retries = 0
+fail-fast = true
+slow-timeout = { period = "30s", terminate-after = 2 }
+status-level = "fail"
+final-status-level = "fail"
